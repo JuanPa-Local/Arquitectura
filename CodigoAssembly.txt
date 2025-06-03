@@ -1,0 +1,209 @@
+; =========================
+; === DIRECCIONES RAM ====
+; =========================
+MULTIPLICANDO   EQU 0x10    ; Multiplicando (8 bits)
+MULTIPLICADOR   EQU 0x11    ; Multiplicador (8 bits)
+RESULT_H        EQU 0x12    ; Parte alta del resultado
+RESULT_L        EQU 0x13    ; Parte baja del resultado
+BIT             EQU 0x14    ; Bit previo (Q_{-1})
+COUNTER         EQU 0x15    ; Contador de iteraciones
+TEMP            EQU 0x16    ; Variable temporal
+
+; =========================
+; ======= INICIO =========
+; =========================
+START:
+    ; Inicializar RESULT_H = 0
+    MOV ACC, #0
+    MOV DPTR, #RESULT_H
+    MOV [DPTR], ACC
+
+    ; Cargar MULTIPLICADOR en RESULT_L
+    MOV DPTR, #MULTIPLICADOR
+    MOV ACC, [DPTR]
+    MOV DPTR, #RESULT_L
+    MOV [DPTR], ACC
+
+    ; Cargar MULTIPLICANDO en TEMP
+    MOV DPTR, #MULTIPLICANDO
+    MOV ACC, [DPTR]
+    MOV DPTR, #TEMP
+    MOV [DPTR], ACC
+
+    ; Inicializar BIT = 0 (Q-1)
+    MOV ACC, #0
+    MOV DPTR, #BIT
+    MOV [DPTR], ACC
+
+    ; Inicializar CONTADOR = 8
+    MOV ACC, #8
+    MOV DPTR, #COUNTER
+    MOV [DPTR], ACC
+
+; =========================
+; ======= CICLO ===========
+; =========================
+LOOP:
+    ; A = 1
+    MOV ACC, #1
+    MOV A, ACC
+
+    ; ACC = RESULT_L
+    MOV DPTR, #RESULT_L
+    MOV ACC, [DPTR]
+
+    ; Comparar ACC AND A (Q0 == 1?)
+    AND ACC, A
+    MOV DPTR, #TEMP
+    MOV [DPTR], ACC
+    MOV ACC, [DPTR]
+
+    ; Si ACC == 0 → verificar Q-1
+    JZ ZERO
+
+    ; ACC = BIT (Q-1)
+    MOV DPTR, #BIT
+    MOV ACC, [DPTR]
+
+    ; Si Q0 == 1 y Q-1 == 0 → restar
+    JZ DO_SUB
+
+    ; Si Q0 == 1 y Q-1 == 1 → desplazar
+    JMP SHIFT
+
+ZERO:
+    ; ACC = BIT (Q-1)
+    MOV DPTR, #BIT
+    MOV ACC, [DPTR]
+
+    ; Si Q0 == 0 y Q-1 == 0 → desplazar
+    JZ SHIFT
+
+    ; Si Q0 == 0 y Q-1 == 1 → sumar
+    CALL ADD_MULT
+    JMP SHIFT
+
+DO_SUB:
+    CALL SUB_MULT
+    JMP SHIFT
+
+SHIFT:
+    CALL SHIFT_RIGHT
+
+    ; Decrementar contador
+    MOV ACC, #1
+    INV ACC
+    MOV A, ACC
+    MOV DPTR, #COUNTER
+    MOV ACC, [DPTR]
+    ADD ACC, A
+    MOV [DPTR], ACC
+
+    ; Verificar si CONTADOR ≠ 0
+    JNZ LOOP
+
+    JMP DONE
+
+DONE:
+    ; Mostrar el resultado final en A y ACC
+
+    ; A = RESULT_H
+    MOV DPTR, #RESULT_H
+    MOV ACC, [DPTR]
+    MOV A, ACC
+
+    ; ACC = RESULT_L
+    MOV DPTR, #RESULT_L
+    MOV ACC, [DPTR]
+
+    ; Detener programa
+    HALT
+
+; =========================
+; ===== SUBRUTINAS ========
+; =========================
+
+ADD_MULT:
+    ; A = MULTIPLICANDO
+    MOV DPTR, #MULTIPLICANDO
+    MOV ACC, [DPTR]
+    MOV A, ACC
+
+    ; ACC = RESULT_H
+    MOV DPTR, #RESULT_H
+    MOV ACC, [DPTR]
+
+    ; ACC = A + ACC
+    ADD ACC, A
+    MOV [DPTR], ACC
+    RET
+
+SUB_MULT:
+    ; A = 1
+    MOV ACC, #1
+    MOV A, ACC
+
+    ; ACC = -MULTIPLICANDO (complemento a dos)
+    MOV DPTR, #MULTIPLICANDO
+    MOV ACC, [DPTR]
+    INV ACC
+    ADD ACC, A
+    MOV A, ACC
+
+    ; ACC = RESULT_H
+    MOV DPTR, #RESULT_H
+    MOV ACC, [DPTR]
+
+    ; Resta: RESULT_H = ACC + (-M)
+    ADD ACC, A
+    MOV [DPTR], ACC
+    RET
+
+SHIFT_RIGHT:
+    ; Guardar LSB de RESULT_H en TEMP
+    MOV DPTR, #RESULT_H
+    MOV ACC, [DPTR]
+    MOV A, ACC
+    MOV ACC, #0b00000001
+    AND ACC, A
+    MOV DPTR, #TEMP
+    MOV [DPTR], ACC
+
+    ; Desplazamiento aritmético de RESULT_H
+    MOV DPTR, #RESULT_H
+    MOV ACC, [DPTR]
+    SAR ACC
+    MOV [DPTR], ACC
+
+    ; Guardar LSB de RESULT_L en BIT
+    MOV DPTR, #RESULT_L
+    MOV ACC, [DPTR]
+    MOV A, ACC
+    MOV ACC, #1
+    AND ACC, A
+    MOV DPTR, #BIT
+    MOV [DPTR], ACC
+
+    ; Desplazamiento lógico de RESULT_L
+    MOV DPTR, #RESULT_L
+    MOV ACC, [DPTR]
+    SLR ACC
+    MOV A, ACC
+
+    ; Revisar si LSB anterior (TEMP) era 1
+    MOV DPTR, #TEMP
+    MOV ACC, [DPTR]
+    JZ SKIP_MSB_SET
+
+    ; Setear MSB en RESULT_L si TEMP == 1
+    MOV ACC, #0b10000000
+    OR ACC, A
+    MOV DPTR, #RESULT_L
+    MOV [DPTR], ACC
+    RET
+
+SKIP_MSB_SET:
+    MOV ACC, A
+    MOV DPTR, #RESULT_L
+    MOV [DPTR], ACC
+    RET
